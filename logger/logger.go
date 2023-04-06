@@ -33,10 +33,14 @@ func initLogger() interfaces.Logger {
 	plog := logrus.New()
 	plog.Formatter = new(logrus.TextFormatter)
 	plog.Level = logrus.DebugLevel
+	plog.SetReportCaller(true)
 
-	log := plog.WithFields(logrus.Fields{
-		"source": "pitaya",
-	})
+	// log := plog.WithFields(logrus.Fields{
+	// 	"source": "pitaya",
+	// })
+
+	log := plog.WithFields(logrus.Fields{})
+
 	return logruswrapper.NewWithFieldLogger(log)
 }
 
@@ -46,3 +50,55 @@ func SetLogger(l interfaces.Logger) {
 		Log = l
 	}
 }
+
+// // LogHook 日志钩子
+// type LogHook struct {
+// 	writerMap map[logrus.Level]*rotatelogs.RotateLogs
+// }
+
+// func NewLogHook() *LogHook {
+// 	hook := &LogHook{
+// 		writerMap: make(map[logrus.Level]*rotatelogs.RotateLogs),
+// 	}
+
+// 	errWriter, err := CreateLogWriter("err")
+// 	if err != nil {
+// 		logrus.Fatalf("create err log writer failed: %s", err.Error())
+// 	}
+
+// 	hook.writerMap[logrus.PanicLevel] = errWriter
+// 	hook.writerMap[logrus.FatalLevel] = errWriter
+// 	hook.writerMap[logrus.ErrorLevel] = errWriter
+
+// 	infoWriter, err := CreateLogWriter("info")
+// 	if err != nil {
+// 		logrus.Fatalf("create info log writer failed: %s", err.Error())
+// 	}
+
+// 	hook.writerMap[logrus.WarnLevel] = infoWriter
+// 	hook.writerMap[logrus.InfoLevel] = infoWriter
+// 	hook.writerMap[logrus.DebugLevel] = infoWriter
+
+// 	return hook
+// }
+
+// // hook Levels 接口
+// func (hook *LogHook) Levels() []logrus.Level {
+// 	return logrus.AllLevels
+// }
+
+// // hook Fire 接口
+// func (hook *LogHook) Fire(entry *logrus.Entry) error {
+// 	writer, ok := hook.writerMap[entry.Level]
+// 	if !ok {
+// 		return nil
+// 	}
+
+// 	msg, err := entry.String()
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	writer.Write([]byte(msg))
+// 	return nil
+// }

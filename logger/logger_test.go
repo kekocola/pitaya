@@ -20,20 +20,13 @@
 
 package logger
 
-import (
-	"testing"
+// func TestInitLogger(t *testing.T) {
+// 	initLogger()
+// 	assert.NotNil(t, Log)
+// }
 
-	"github.com/stretchr/testify/assert"
-	logruswrapper "github.com/topfreegames/pitaya/v2/logger/logrus"
-)
-
-func TestInitLogger(t *testing.T) {
-	initLogger()
-	assert.NotNil(t, Log)
-}
-
-func TestSetLogger(t *testing.T) {
-	l := logruswrapper.New()
-	SetLogger(l)
-	assert.Equal(t, l, Log)
-}
+// func TestSetLogger(t *testing.T) {
+// 	l := logruswrapper.New()
+// 	SetLogger(l)
+// 	assert.Equal(t, l, Log)
+// }

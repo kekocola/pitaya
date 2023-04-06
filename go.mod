@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.1.4
 	github.com/gorilla/websocket v1.5.0
 	github.com/jhump/protoreflect v1.8.2
+	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
 	github.com/mailgun/proxyproto v1.0.0
 	github.com/nats-io/nats-server/v2 v2.8.4
 	github.com/nats-io/nats.go v1.15.0
@@ -59,6 +60,7 @@ require (
 	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/klauspost/compress v1.14.4 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
+	github.com/lestrrat-go/strftime v1.0.6 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect
