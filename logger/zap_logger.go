@@ -11,7 +11,12 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+var zapLogger *zap.Logger
 var ZapLog = initZapLogger()
+
+func GetZapLogger() *zap.Logger {
+	return zapLogger
+}
 
 func initZapLogger() *zap.SugaredLogger {
 	encoderConfig := zap.NewProductionEncoderConfig()
@@ -29,15 +34,13 @@ func initZapLogger() *zap.SugaredLogger {
 		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(CreateLogWriter(level.String())), getLevelPriority(level)))
 	}
 
-	// 调试模式输出log到控制台
-	// if global.IsDebug {
-	// 	encoderDev := zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig())
-	// 	cores = append(cores, zapcore.NewCore(encoderDev, zapcore.AddSync(os.Stderr), zap.DebugLevel))
-	// }
+	// 输出出log到控制台
+	encoderDev := zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig())
+	cores = append(cores, zapcore.NewCore(encoderDev, zapcore.AddSync(os.Stderr), zap.DebugLevel))
 	core := zapcore.NewTee(cores...)
 
-	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.WarnLevel), zap.AddCallerSkip(1))
-	return logger.Sugar()
+	zapLogger = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.WarnLevel), zap.AddCallerSkip(1))
+	return zapLogger.Sugar()
 }
 
 func getLevelPriority(level zapcore.Level) zap.LevelEnablerFunc {
