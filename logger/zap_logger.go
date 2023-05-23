@@ -90,7 +90,7 @@ func CreateLogWriter(filePrefix string) io.Writer {
 	writer, err := rotatelogs.New(
 		path.Join(cwd, "log", filePrefix+"-%Y-%m-%d.log"), // 日期格式的日志文件
 		rotatelogs.WithClock(rotatelogs.Local),
-		rotatelogs.WithMaxAge(time.Hour*24*3), //过期时间
+		rotatelogs.WithMaxAge(time.Hour*24*15), //过期时间
 	)
 
 	if err != nil {
