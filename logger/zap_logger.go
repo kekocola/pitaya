@@ -1,9 +1,11 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path"
+	"strconv"
 	"time"
 
 	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
@@ -12,13 +14,17 @@ import (
 )
 
 var zapLogger *zap.Logger
-var ZapLog = initZapLogger()
+var ZapLog = createZapLogger(strconv.Itoa(os.Getpid()))
 
 func GetZapLogger() *zap.Logger {
 	return zapLogger
 }
 
-func initZapLogger() *zap.SugaredLogger {
+func SetDefaultLogger(name string) {
+	ZapLog = createZapLogger(name)
+}
+
+func createZapLogger(name string) *zap.SugaredLogger {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	timeFormat := "2006-01-02 15:04:05.000"
 	encoderConfig.EncodeTime = func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
@@ -31,7 +37,7 @@ func initZapLogger() *zap.SugaredLogger {
 	// 输出到日志文件
 	cores := []zapcore.Core{}
 	for level := zap.InfoLevel; level <= zapcore.FatalLevel; level++ {
-		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(CreateLogWriter(level.String())), getLevelPriority(level)))
+		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(CreateLogWriter(fmt.Sprintf("%s-%s", name, level.String()))), getLevelPriority(level)))
 	}
 
 	// 输出出log到控制台
