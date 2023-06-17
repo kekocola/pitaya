@@ -334,7 +334,7 @@ func (a *agentImpl) Close() error {
 	a.closeMutex.Lock()
 	defer a.closeMutex.Unlock()
 	if a.GetStatus() == constants.StatusClosed {
-		return constants.ErrCloseClosedSession
+		return nil
 	}
 	a.SetStatus(constants.StatusClosed)
 

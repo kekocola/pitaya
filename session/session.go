@@ -92,12 +92,12 @@ type sessionImpl struct {
 	frontendID        string                      // the id of the frontend that owns the session
 	frontendSessionID int64                       // the id of the session on the frontend server
 	Subscriptions     []*nats.Subscription        // subscription created on bind when using nats rpc server
-	requestsInFlight  ReqInFlight           // whether the session is waiting from a response from a remote
+	requestsInFlight  ReqInFlight                 // whether the session is waiting from a response from a remote
 	pool              *sessionPoolImpl
 }
 
 type ReqInFlight struct {
-	m map[string]string
+	m  map[string]string
 	mu sync.RWMutex
 }
 
@@ -277,7 +277,7 @@ func (pool *sessionPoolImpl) CloseAll() {
 			if s.HasRequestsInFlight() {
 				reqsInFlight := s.GetRequestsInFlight()
 				reqsInFlight.mu.RLock()
-				for _,route := range reqsInFlight.m {
+				for _, route := range reqsInFlight.m {
 					logger.Log.Debugf("Session for user %s is waiting on a response for route %s from a remote server. Delaying session close.", s.UID(), route)
 				}
 				reqsInFlight.mu.RUnlock()
@@ -444,7 +444,9 @@ func (s *sessionImpl) Bind(ctx context.Context, uid string) error {
 func (s *sessionImpl) Kick(ctx context.Context) error {
 	err := s.entity.Kick(ctx)
 	if err != nil {
-		return err
+		logger.Log.Error("Kick user fail:%s", err)
+		// 如果玩家tcp断开，kick失败，此时应继续关闭entity
+		// return err
 	}
 	return s.entity.Close()
 }

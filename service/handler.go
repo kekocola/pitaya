@@ -24,9 +24,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/nats-io/nuid"
 	"strings"
 	"time"
+
+	"github.com/nats-io/nuid"
 
 	"github.com/topfreegames/pitaya/v2/acceptor"
 	"github.com/topfreegames/pitaya/v2/pipeline"
@@ -183,7 +184,6 @@ func (h *HandlerService) Handle(conn acceptor.PlayerConn) {
 			if err != constants.ErrConnectionClosed {
 				logger.Log.Errorf("Error reading next available message: %s", err.Error())
 			}
-
 			return
 		}
 
