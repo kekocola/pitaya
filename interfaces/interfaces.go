@@ -32,4 +32,5 @@ type Module interface {
 type BindingStorage interface {
 	GetUserFrontendID(uid, frontendType string) (string, error)
 	PutBinding(uid string) error
+	IsUserOnline(uid uint64) bool
 }

@@ -125,6 +125,8 @@ type Pitaya interface {
 	RegisterModuleAfter(module interfaces.Module, name string) error
 	RegisterModuleBefore(module interfaces.Module, name string) error
 	GetModule(name string) (interfaces.Module, error)
+
+	IsUserOnline(uid uint64) bool
 }
 
 // App is the base app struct

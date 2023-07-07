@@ -23,16 +23,20 @@ package modules
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/namespace"
 	"github.com/topfreegames/pitaya/v2/cluster"
 	"github.com/topfreegames/pitaya/v2/config"
 	"github.com/topfreegames/pitaya/v2/constants"
 	"github.com/topfreegames/pitaya/v2/logger"
 	"github.com/topfreegames/pitaya/v2/session"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/namespace"
 )
+
+var void = struct{}{} // empty instance
 
 // ETCDBindingStorage module that uses etcd to keep in which frontend server each user is bound
 type ETCDBindingStorage struct {
@@ -46,6 +50,8 @@ type ETCDBindingStorage struct {
 	thisServer      *cluster.Server
 	sessionPool     session.SessionPool
 	stopChan        chan struct{}
+	onlineUsers     map[uint64]struct{}
+	running         bool
 }
 
 // NewETCDBindingStorage returns a new instance of BindingStorage
@@ -54,6 +60,8 @@ func NewETCDBindingStorage(server *cluster.Server, sessionPool session.SessionPo
 		thisServer:  server,
 		sessionPool: sessionPool,
 		stopChan:    make(chan struct{}),
+		onlineUsers: make(map[uint64]struct{}),
+		running:     false,
 	}
 	b.etcdDialTimeout = conf.DialTimeout
 	b.etcdEndpoints = conf.Endpoints
@@ -64,6 +72,15 @@ func NewETCDBindingStorage(server *cluster.Server, sessionPool session.SessionPo
 
 func getUserBindingKey(uid, frontendType string) string {
 	return fmt.Sprintf("bindings/%s/%s", frontendType, uid)
+}
+
+func parseBindingsKey(key string) (string, error) {
+	splittedUser := strings.Split(key, "/")
+	if len(splittedUser) != 3 {
+		return "", fmt.Errorf("error parsing bindings key %s", key)
+	}
+	uid := splittedUser[2]
+	return uid, nil
 }
 
 // PutBinding puts the binding info into etcd
@@ -164,6 +181,7 @@ func (b *ETCDBindingStorage) Init() error {
 			return err
 		}
 		b.cli = cli
+		b.cli.Watcher = namespace.NewWatcher(b.cli.Watcher, b.etcdPrefix)
 	}
 	// namespaced etcd :)
 	b.cli.KV = namespace.NewKV(b.cli.KV, b.etcdPrefix)
@@ -177,11 +195,75 @@ func (b *ETCDBindingStorage) Init() error {
 		b.setupOnAfterSessionBindCB()
 	}
 
+	b.running = true
+	go b.watchUserChange()
+
 	return nil
 }
 
 // Shutdown executes on shutdown and will clean etcd
 func (b *ETCDBindingStorage) Shutdown() error {
+	b.running = false
 	close(b.stopChan)
 	return b.cli.Close()
+}
+
+// add online user
+func (b *ETCDBindingStorage) addOnlineUser(uid string) {
+	id, err := strconv.ParseUint(uid, 10, 64)
+	if err == nil {
+		b.onlineUsers[id] = void
+	}
+}
+
+// delete online user
+func (b *ETCDBindingStorage) deleteOnlineUser(uid string) {
+	id, err := strconv.ParseUint(uid, 10, 64)
+	if err == nil {
+		delete(b.onlineUsers, id)
+	}
+}
+
+// is online user
+func (b *ETCDBindingStorage) IsUserOnline(uid uint64) bool {
+	_, ok := b.onlineUsers[uid]
+	return ok
+}
+
+// watch user login or logout
+func (b *ETCDBindingStorage) watchUserChange() {
+	w := b.cli.Watch(context.Background(), "bindings/", clientv3.WithPrefix())
+	go func(chn clientv3.WatchChan) {
+		for b.running {
+			select {
+			case wResp, ok := <-chn:
+				if wResp.Err() != nil {
+					logger.Log.Warnf("etcd watcher user response error: %s", wResp.Err())
+					time.Sleep(1000 * time.Millisecond)
+				}
+				if !ok {
+					logger.Log.Error("etcd watcher user died, retrying to watch in 1 second")
+					time.Sleep(1000 * time.Millisecond)
+					chn = b.cli.Watch(context.Background(), "bindings/", clientv3.WithPrefix())
+					continue
+				}
+				for _, ev := range wResp.Events {
+					uid, err := parseBindingsKey(string(ev.Kv.Key))
+					if err != nil {
+						logger.Log.Warnf("failed to parse bindings key from etcd: %s", ev.Kv.Key)
+						continue
+					}
+
+					switch ev.Type {
+					case clientv3.EventTypePut:
+						b.addOnlineUser(uid)
+					case clientv3.EventTypeDelete:
+						b.deleteOnlineUser(uid)
+					}
+				}
+			case <-b.stopChan:
+				return
+			}
+		}
+	}(w)
 }
