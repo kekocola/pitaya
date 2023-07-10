@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/topfreegames/pitaya/v2/cluster"
@@ -52,6 +53,7 @@ type ETCDBindingStorage struct {
 	stopChan        chan struct{}
 	onlineUsers     map[uint64]struct{}
 	running         bool
+	userMapLock     sync.RWMutex
 }
 
 // NewETCDBindingStorage returns a new instance of BindingStorage
@@ -210,6 +212,8 @@ func (b *ETCDBindingStorage) Shutdown() error {
 
 // add online user
 func (b *ETCDBindingStorage) addOnlineUser(uid string) {
+	b.userMapLock.Lock()
+	defer b.userMapLock.Unlock()
 	id, err := strconv.ParseUint(uid, 10, 64)
 	if err == nil {
 		b.onlineUsers[id] = void
@@ -218,6 +222,8 @@ func (b *ETCDBindingStorage) addOnlineUser(uid string) {
 
 // delete online user
 func (b *ETCDBindingStorage) deleteOnlineUser(uid string) {
+	b.userMapLock.Lock()
+	defer b.userMapLock.Unlock()
 	id, err := strconv.ParseUint(uid, 10, 64)
 	if err == nil {
 		delete(b.onlineUsers, id)
@@ -226,6 +232,8 @@ func (b *ETCDBindingStorage) deleteOnlineUser(uid string) {
 
 // is online user
 func (b *ETCDBindingStorage) IsUserOnline(uid uint64) bool {
+	b.userMapLock.RLock()
+	defer b.userMapLock.RUnlock()
 	_, ok := b.onlineUsers[uid]
 	return ok
 }
