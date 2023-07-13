@@ -61,6 +61,16 @@ func (app *App) ReliableRPCWithOptions(
 	return app.worker.EnqueueRPCWithOptions(routeStr, metadata, reply, arg, opts)
 }
 
+// LocalRPC process rpc between pitaya components
+func (app *App) LocalRPC(ctx context.Context, routeStr string, arg proto.Message) (proto.Message, error) {
+	r, err := route.Decode(routeStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return app.remoteService.LocalRPC(ctx, r, arg)
+}
+
 func (app *App) doSendRPC(ctx context.Context, serverID, routeStr string, reply proto.Message, arg proto.Message) error {
 	if app.rpcServer == nil {
 		return constants.ErrRPCServerNotInitialized

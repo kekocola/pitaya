@@ -303,6 +303,33 @@ func (r *RemoteService) Register(comp component.Component, opts []component.Opti
 	return nil
 }
 
+func (r *RemoteService) LocalRPC(ctx context.Context, rt *route.Route, arg proto.Message) (reply proto.Message, err error) {
+	remote, ok := r.remotes[rt.Short()]
+	if !ok {
+		logger.Log.Warnf("pitaya/remote: %s not found", rt.Short())
+		return nil, fmt.Errorf("route:%s not found", rt.Short())
+	}
+
+	params := []reflect.Value{remote.Receiver, reflect.ValueOf(ctx)}
+	params = append(params, reflect.ValueOf(arg))
+
+	ret, err := util.Pcall(remote.Method, params)
+	if err != nil {
+		return nil, err
+	}
+
+	if ret != nil {
+		pb, ok := ret.(proto.Message)
+		if !ok {
+			return nil, constants.ErrWrongValueType
+		} else {
+			return pb, nil
+		}
+	} else {
+		return nil, fmt.Errorf("return data is nil")
+	}
+}
+
 func processRemoteMessage(ctx context.Context, req *protos.Request, r *RemoteService) *protos.Response {
 	rt, err := route.Decode(req.GetMsg().GetRoute())
 	if err != nil {

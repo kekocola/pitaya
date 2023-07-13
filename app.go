@@ -102,6 +102,7 @@ type Pitaya interface {
 		reply, arg proto.Message,
 		opts *config.EnqueueOpts,
 	) (jid string, err error)
+	LocalRPC(ctx context.Context, routeStr string, arg proto.Message) (proto.Message, error)
 
 	SendPushToUsers(route string, v interface{}, uids []string, frontendType string) ([]string, error)
 	SendKickToUsers(uids []string, frontendType string) ([]string, error)
