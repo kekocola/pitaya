@@ -85,7 +85,7 @@ type connHandler struct {
 	connChan chan PlayerConn
 }
 
-func (h *connHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+func (h *connHandler) ServeWS(rw http.ResponseWriter, r *http.Request) {
 	conn, err := h.upgrader.Upgrade(rw, r, nil)
 	if err != nil {
 		logger.Log.Errorf("Upgrade failure, URI=%s, Error=%s", r.RequestURI, err.Error())
@@ -152,10 +152,19 @@ func (w *WSAcceptor) ListenAndServeTLS(cert, key string) {
 func (w *WSAcceptor) serve(upgrader *websocket.Upgrader) {
 	defer w.Stop()
 
-	http.Serve(w.listener, &connHandler{
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	})
+
+	wsHandler := &connHandler{
 		upgrader: upgrader,
 		connChan: w.connChan,
-	})
+	}
+	http.HandleFunc("/", wsHandler.ServeWS)
+
+	if err := http.Serve(w.listener, nil); err != nil {
+		logger.Log.Fatalf("Failed to serve http/ws port: %s", err.Error())
+	}
 }
 
 // Stop stops the acceptor
