@@ -303,6 +303,7 @@ func (r *RemoteService) Register(comp component.Component, opts []component.Opti
 	return nil
 }
 
+// local rpc between component
 func (r *RemoteService) LocalRPC(ctx context.Context, rt *route.Route, arg proto.Message) (reply proto.Message, err error) {
 	remote, ok := r.remotes[rt.Short()]
 	if !ok {
