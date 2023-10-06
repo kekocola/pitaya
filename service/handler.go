@@ -260,7 +260,7 @@ func (h *HandlerService) processPacket(a agent.Agent, p *packet.Packet) error {
 }
 
 func (h *HandlerService) processMessage(a agent.Agent, msg *message.Message) {
-	requestID := nuid.New()
+	requestID := nuid.New().Next()
 	ctx := pcontext.AddToPropagateCtx(context.Background(), constants.StartTimeKey, time.Now().UnixNano())
 	ctx = pcontext.AddToPropagateCtx(ctx, constants.RouteKey, msg.Route)
 	ctx = pcontext.AddToPropagateCtx(ctx, constants.RequestIDKey, requestID)
