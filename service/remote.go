@@ -164,8 +164,12 @@ func (r *RemoteService) Call(ctx context.Context, req *protos.Request) (*protos.
 				}
 			}
 		} else {
-			res := <-result
-			return res, nil
+			select {
+			case <-time.After(time.Second * 60):
+				err = constants.ErrRPCRequestTimeout
+			case res := <-result:
+				return res, nil
+			}
 		}
 	}
 
