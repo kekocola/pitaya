@@ -442,8 +442,8 @@ func (s *sessionImpl) Bind(ctx context.Context, uid string) error {
 	// if code running on frontend server
 	if s.IsFrontend {
 		// If a session with the same UID already exists in this frontend server, close it
-		if val, ok := s.pool.sessionsByUID.Load(uid); ok {
-			val.(*Session).Close()
+		if val, ok := sessionsByUID.Load(uid); ok {
+			val.(Session).Close()
 		}
 		s.pool.sessionsByUID.Store(uid, s)
 	} else {
@@ -480,13 +480,13 @@ func (s *sessionImpl) OnClose(c func()) error {
 
 // Close terminates current session, session related data will not be released,
 // all related data should be cleared explicitly in Session closed callback
-func (s *Session) Close() {
-	atomic.AddInt64(&SessionCount, -1)
-	sessionsByID.Delete(s.ID())
+func (s *sessionImpl) Close() {
+	atomic.AddInt64(&s.pool.SessionCount, -1)
+	s.pool.sessionsByID.Delete(s.ID())
 	// Only remove session by UID if the session ID matches the one being closed. This avoids problems with removing a valid session after the user has already reconnected before this session's heartbeat times out
-	if val, ok := sessionsByUID.Load(s.UID()); ok {
-		if (val.(*Session)).id == s.ID() {
-			sessionsByUID.Delete(s.UID())
+	if val, ok := s.pool.sessionsByUID.Load(s.UID()); ok {
+		if (val.(Session)).id == s.ID() {
+			s.pool.sessionsByUID.Delete(s.UID())
 		}
 	}
 	// TODO: this logic should be moved to nats rpc server
