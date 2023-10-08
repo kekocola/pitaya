@@ -109,6 +109,11 @@ func (r *RemoteService) remoteProcess(
 	route *route.Route,
 	msg *message.Message,
 ) {
+	if !a.GetSession().IsBinded() {
+		a.AnswerWithError(ctx, msg.ID, errors.New("session not authed"))
+		return
+	}
+
 	res, err := r.remoteCall(ctx, server, protos.RPCType_Sys, route, a.GetSession(), msg)
 	switch msg.Type {
 	case message.Request:
@@ -457,7 +462,7 @@ func (r *RemoteService) handleRPCSys(ctx context.Context, req *protos.Request, r
 		r.sessionPool,
 	)
 	if err != nil {
-		logger.Log.Warn("pitaya/handler: cannot instantiate remote agent")
+		logger.Log.Warnf("pitaya/handler: handle route:%s cannot instantiate remote agent", rt)
 		response := &protos.Response{
 			Error: &protos.Error{
 				Code: e.ErrInternalCode,
@@ -469,7 +474,7 @@ func (r *RemoteService) handleRPCSys(ctx context.Context, req *protos.Request, r
 
 	ret, err := r.handlerPool.ProcessHandlerMessage(ctx, rt, r.serializer, r.handlerHooks, a.Session, req.GetMsg().GetData(), req.GetMsg().GetType(), true)
 	if err != nil {
-		logger.Log.Warnf(err.Error())
+		logger.Log.Warnf("pitaya/handler: route:%s error:%v", rt.String(), err.Error())
 		response = &protos.Response{
 			Error: &protos.Error{
 				Code: e.ErrUnknownCode,

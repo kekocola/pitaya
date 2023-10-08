@@ -131,6 +131,7 @@ type Session interface {
 	SetDataEncoded(encodedData []byte) error
 	SetFrontendData(frontendID string, frontendSessionID int64)
 	Bind(ctx context.Context, uid string) error
+	IsBinded() bool
 	Kick(ctx context.Context) error
 	OnClose(c func()) error
 	Close()
@@ -459,6 +460,11 @@ func (s *sessionImpl) Bind(ctx context.Context, uid string) error {
 	}
 
 	return nil
+}
+
+// check session is binded or not
+func (s *sessionImpl) IsBinded() bool {
+	return s.UID() != ""
 }
 
 // Kick kicks the user
