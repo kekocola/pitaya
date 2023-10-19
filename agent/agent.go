@@ -358,7 +358,10 @@ func (a *agentImpl) Close() error {
 
 	metrics.ReportNumberOfConnectedClients(a.metricsReporters, a.sessionPool.GetSessionCount())
 
-	return a.conn.Close()
+	// close connection may raise error althought it is closed
+	// return a.conn.Close()
+	a.conn.Close()
+	return nil
 }
 
 // RemoteAddr implementation for NetworkEntity interface

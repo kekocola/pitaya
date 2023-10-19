@@ -471,9 +471,14 @@ func (s *sessionImpl) IsBinded() bool {
 func (s *sessionImpl) Kick(ctx context.Context) error {
 	err := s.entity.Kick(ctx)
 	if err != nil {
-		return err
+		logger.Log.Errorf("kick session fail, server will force close agent, uid:%s err:%v", s.UID(), err)
+		// return err
 	}
-	return s.entity.Close()
+	err = s.entity.Close()
+	if err != nil {
+		logger.Log.Errorf("close agent fail, uid:%s err:%v", s.UID(), err)
+	}
+	return nil
 }
 
 // OnClose adds the function it receives to the callbacks that will be called
