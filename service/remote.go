@@ -388,8 +388,11 @@ func (r *RemoteService) handleRPCUser(ctx context.Context, req *protos.Request, 
 		return response
 	}
 	params := []reflect.Value{remote.Receiver, reflect.ValueOf(ctx)}
+
+	var arg interface{}
+	var err error
 	if remote.HasArgs {
-		arg, err := unmarshalRemoteArg(remote, req.GetMsg().GetData())
+		arg, err = unmarshalRemoteArg(remote, req.GetMsg().GetData())
 		if err != nil {
 			response := &protos.Response{
 				Error: &protos.Error{
@@ -399,6 +402,20 @@ func (r *RemoteService) handleRPCUser(ctx context.Context, req *protos.Request, 
 			}
 			return response
 		}
+	}
+
+	ctx, arg, err = r.handlerHooks.BeforeHandler.ExecuteBeforePipeline(ctx, arg)
+	if err != nil {
+		response := &protos.Response{
+			Error: &protos.Error{
+				Code: e.ErrInternalCode,
+				Msg:  err.Error(),
+			},
+		}
+		return response
+	}
+
+	if arg != nil {
 		params = append(params, reflect.ValueOf(arg))
 	}
 
@@ -415,6 +432,17 @@ func (r *RemoteService) handleRPCUser(ctx context.Context, req *protos.Request, 
 			if val.Metadata != nil {
 				response.Error.Metadata = val.Metadata
 			}
+		}
+		return response
+	}
+
+	ret, err = r.handlerHooks.AfterHandler.ExecuteAfterPipeline(ctx, ret, err)
+	if err != nil {
+		response := &protos.Response{
+			Error: &protos.Error{
+				Code: e.ErrInternalCode,
+				Msg:  err.Error(),
+			},
 		}
 		return response
 	}
