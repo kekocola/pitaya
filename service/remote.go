@@ -422,6 +422,21 @@ func (r *RemoteService) handleRPCUser(ctx context.Context, req *protos.Request, 
 		params = append(params, reflect.ValueOf(arg))
 	}
 	ret, err = util.Pcall(remote.Method, params)
+	if err != nil {
+		response := &protos.Response{
+			Error: &protos.Error{
+				Code: e.ErrUnknownCode,
+				Msg:  err.Error(),
+			},
+		}
+		if val, ok := err.(*e.Error); ok {
+			response.Error.Code = val.Code
+			if val.Metadata != nil {
+				response.Error.Metadata = val.Metadata
+			}
+		}
+		return response
+	}
 
 	ret, err = r.remoteHooks.AfterHandler.ExecuteAfterPipeline(ctx, ret, err)
 	if err != nil {
