@@ -80,6 +80,7 @@ type Pitaya interface {
 	GetServersByType(t string) (map[string]*cluster.Server, error)
 	GetServers() []*cluster.Server
 	GetSessionFromCtx(ctx context.Context) session.Session
+	HasSessionInCtx(ctx context.Context) bool
 	Start()
 	SetDictionary(dict map[string]uint16) error
 	AddRoute(serverType string, routingFunction router.RoutingFunc) error
@@ -459,6 +460,15 @@ func (app *App) GetSessionFromCtx(ctx context.Context) session.Session {
 		return nil
 	}
 	return sessionVal.(session.Session)
+}
+
+// HasSessionInCtx check a session exists in a given context
+func (app *App) HasSessionInCtx(ctx context.Context) bool {
+	sessionVal := ctx.Value(constants.SessionCtxKey)
+	if sessionVal == nil {
+		return false
+	}
+	return true
 }
 
 // GetDefaultLoggerFromCtx returns the default logger from the given context
