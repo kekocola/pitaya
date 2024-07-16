@@ -129,6 +129,7 @@ type Pitaya interface {
 	GetModule(name string) (interfaces.Module, error)
 
 	IsUserOnline(uid uint64) bool
+	GetSerializer() serialize.Serializer
 }
 
 // App is the base app struct
@@ -553,4 +554,9 @@ func (app *App) StartWorker() {
 func (app *App) RegisterRPCJob(rpcJob worker.RPCJob) error {
 	err := app.worker.RegisterRPCJob(rpcJob)
 	return err
+}
+
+// GetSerializer return the app`s specified serializer`
+func (app *App) GetSerializer() serialize.Serializer {
+	return app.serializer
 }
