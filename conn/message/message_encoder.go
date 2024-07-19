@@ -188,6 +188,12 @@ func Decode(data []byte) (*Message, error) {
 			}
 			m.Route = string(data[offset:(offset + int(rl))])
 			offset += int(rl)
+			if m.Route == "" {
+				return nil, ErrRouteInfoNotFound
+			}
+			if _, ok := routes[m.Route]; !ok {
+				return nil, ErrRouteInfoNotFound
+			}
 		}
 	}
 

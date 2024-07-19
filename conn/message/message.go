@@ -146,6 +146,18 @@ func GetDictionary() map[string]uint16 {
 	return dict
 }
 
+// IsRouteCodeValid check the route code is exists
+func IsRouteCodeValid(code uint16) bool {
+	_, ok := codes[code]
+	return ok
+}
+
+// IsRouteValid check the route str is exists
+func IsRouteValid(route string) bool {
+	_, ok := routes[route]
+	return ok
+}
+
 func (t *Type) String() string {
 	return types[*t]
 }

@@ -290,6 +290,11 @@ func (a *agentImpl) GetSession() session.Session {
 
 // Push implementation for NetworkEntity interface
 func (a *agentImpl) Push(route string, v interface{}) error {
+	if !message.IsRouteValid(route) {
+		logger.Log.Errorf("route:%s undefined", route)
+		return constants.ErrRouteUndefined
+	}
+
 	if a.GetStatus() == constants.StatusClosed {
 		return errors.NewError(constants.ErrBrokenPipe, errors.ErrClientClosedRequest)
 	}

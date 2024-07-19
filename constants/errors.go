@@ -87,4 +87,6 @@ var (
 	ErrReceivedMsgSmallerThanExpected = errors.New("received less data than expected, EOF?")
 	ErrReceivedMsgBiggerThanExpected  = errors.New("received more data than expected")
 	ErrConnectionClosed               = errors.New("client connection closed")
+	ErrRouteUndefined                 = errors.New("route undefined")
+	ErrRouteCodeUndefined             = errors.New("route code undefined")
 )

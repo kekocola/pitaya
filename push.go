@@ -24,6 +24,7 @@ import (
 	"strconv"
 
 	"github.com/topfreegames/pitaya/v2/cluster"
+	"github.com/topfreegames/pitaya/v2/conn/message"
 	"github.com/topfreegames/pitaya/v2/constants"
 	"github.com/topfreegames/pitaya/v2/logger"
 	"github.com/topfreegames/pitaya/v2/protos"
@@ -32,6 +33,11 @@ import (
 
 // SendPushToUsers sends a message to the given list of users
 func (app *App) SendPushToUsers(route string, v interface{}, uids []string, frontendType string) ([]string, error) {
+	if !message.IsRouteValid(route) {
+		logger.Log.Errorf("route:%s undefined", route)
+		return uids, constants.ErrRouteUndefined
+	}
+
 	data, err := util.SerializeOrRaw(app.serializer, v)
 	if err != nil {
 		return uids, err
@@ -76,6 +82,11 @@ func (app *App) SendPushToUsers(route string, v interface{}, uids []string, fron
 
 // PushMsg pushes message to an user
 func (app *App) PushMsg(uid uint64, route string, v interface{}, frontendType string) error {
+	if !message.IsRouteValid(route) {
+		logger.Log.Errorf("route:%s undefined", route)
+		return constants.ErrRouteUndefined
+	}
+
 	data, err := util.SerializeOrRaw(app.serializer, v)
 	if err != nil {
 		return err
