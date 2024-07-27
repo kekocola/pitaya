@@ -37,33 +37,33 @@ import (
 	"go.etcd.io/etcd/client/v3/namespace"
 )
 
-var void = struct{}{} // empty instance
-
 // ETCDBindingStorage module that uses etcd to keep in which frontend server each user is bound
 type ETCDBindingStorage struct {
 	Base
-	cli             *clientv3.Client
-	etcdEndpoints   []string
-	etcdPrefix      string
-	etcdDialTimeout time.Duration
-	leaseTTL        time.Duration
-	leaseID         clientv3.LeaseID
-	thisServer      *cluster.Server
-	sessionPool     session.SessionPool
-	stopChan        chan struct{}
-	onlineUsers     map[uint64]struct{}
-	running         bool
-	userMapLock     sync.RWMutex
+	cli              *clientv3.Client
+	etcdEndpoints    []string
+	etcdPrefix       string
+	etcdDialTimeout  time.Duration
+	leaseTTL         time.Duration
+	leaseID          clientv3.LeaseID
+	thisServer       *cluster.Server
+	sessionPool      session.SessionPool
+	stopChan         chan struct{}
+	onlineUsers      map[uint64]string // uid -> front_server_id
+	syncUsersRunning chan bool
+	running          bool
+	userMapLock      sync.RWMutex
 }
 
 // NewETCDBindingStorage returns a new instance of BindingStorage
 func NewETCDBindingStorage(server *cluster.Server, sessionPool session.SessionPool, conf config.ETCDBindingConfig) *ETCDBindingStorage {
 	b := &ETCDBindingStorage{
-		thisServer:  server,
-		sessionPool: sessionPool,
-		stopChan:    make(chan struct{}),
-		onlineUsers: make(map[uint64]struct{}),
-		running:     false,
+		thisServer:       server,
+		sessionPool:      sessionPool,
+		stopChan:         make(chan struct{}),
+		onlineUsers:      make(map[uint64]string),
+		syncUsersRunning: make(chan bool),
+		running:          false,
 	}
 	b.etcdDialTimeout = conf.DialTimeout
 	b.etcdEndpoints = conf.Endpoints
@@ -100,14 +100,45 @@ func (b *ETCDBindingStorage) removeBinding(uid string) error {
 // TODO: should we set context here?
 // TODO: this could be way more optimized, using watcher and local caching
 func (b *ETCDBindingStorage) GetUserFrontendID(uid, frontendType string) (string, error) {
-	etcdRes, err := b.cli.Get(context.Background(), getUserBindingKey(uid, frontendType))
+	id, err := strconv.ParseUint(uid, 10, 64)
 	if err != nil {
 		return "", err
 	}
-	if len(etcdRes.Kvs) == 0 {
+
+	b.userMapLock.RLock()
+	defer b.userMapLock.RUnlock()
+
+	serverId, ok := b.onlineUsers[id]
+	if !ok {
 		return "", constants.ErrBindingNotFound
 	}
-	return string(etcdRes.Kvs[0].Value), nil
+
+	return serverId, nil
+}
+
+// GetUserFrontendIDMap gets the users frontend server id from local cache, return by map
+func (b *ETCDBindingStorage) GetUserFrontendIDMap(uids []string, frontendType string) map[string]string {
+	result := make(map[string]string)
+
+	if len(uids) == 0 {
+		return result
+	}
+
+	b.userMapLock.RLock()
+	defer b.userMapLock.RUnlock()
+
+	for _, uid := range uids {
+		id, err := strconv.ParseUint(uid, 10, 64)
+		if err != nil {
+			logger.Log.Errorf("parse uid failed: %s", uid)
+			result[uid] = ""
+			continue
+		}
+
+		result[uid] = b.onlineUsers[id]
+	}
+
+	return result
 }
 
 func (b *ETCDBindingStorage) setupOnSessionCloseCB() {
@@ -199,6 +230,7 @@ func (b *ETCDBindingStorage) Init() error {
 
 	b.running = true
 	go b.watchUserChange()
+	b.SyncOnlineUsers()
 
 	return nil
 }
@@ -211,13 +243,15 @@ func (b *ETCDBindingStorage) Shutdown() error {
 }
 
 // add online user
-func (b *ETCDBindingStorage) addOnlineUser(uid string) {
+func (b *ETCDBindingStorage) addOnlineUser(uid, serverid string) {
 	b.userMapLock.Lock()
 	defer b.userMapLock.Unlock()
 	id, err := strconv.ParseUint(uid, 10, 64)
-	if err == nil {
-		b.onlineUsers[id] = void
+	if err != nil {
+		logger.Log.Errorf("parse uid failed: %s", uid)
+		return
 	}
+	b.onlineUsers[id] = serverid
 }
 
 // delete online user
@@ -238,12 +272,39 @@ func (b *ETCDBindingStorage) IsUserOnline(uid uint64) bool {
 	return ok
 }
 
+// SyncOnlineUsers sync all the online users to local
+func (b *ETCDBindingStorage) SyncOnlineUsers() {
+	b.syncUsersRunning <- true
+	go func() {
+		b.syncUsersRunning <- false
+	}()
+
+	resp, err := b.cli.Get(context.Background(), "bindings/", clientv3.WithPrefix())
+	if err != nil {
+		logger.Log.Errorf("Error querying online users fail: %v", err)
+		return
+	}
+
+	for _, kv := range resp.Kvs {
+		uid, err := parseBindingsKey(string(kv.Key))
+		if err != nil {
+			logger.Log.Errorf("failed to parse bindings key from etcd: %s, err:%v", kv.Key, err)
+			continue
+		}
+		b.addOnlineUser(uid, string(kv.Value))
+	}
+}
+
 // watch user login or logout
 func (b *ETCDBindingStorage) watchUserChange() {
 	w := b.cli.Watch(context.Background(), "bindings/", clientv3.WithPrefix())
 	go func(chn clientv3.WatchChan) {
 		for b.running {
 			select {
+			case syncUsersState := <-b.syncUsersRunning:
+				for syncUsersState {
+					syncUsersState = <-b.syncUsersRunning
+				}
 			case wResp, ok := <-chn:
 				if wResp.Err() != nil {
 					logger.Log.Warnf("etcd watcher user response error: %s", wResp.Err())
@@ -264,7 +325,7 @@ func (b *ETCDBindingStorage) watchUserChange() {
 
 					switch ev.Type {
 					case clientv3.EventTypePut:
-						b.addOnlineUser(uid)
+						b.addOnlineUser(uid, string(ev.Kv.Value))
 					case clientv3.EventTypeDelete:
 						b.deleteOnlineUser(uid)
 					}
