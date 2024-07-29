@@ -223,6 +223,24 @@ func (r *RemoteService) PushToUser(ctx context.Context, push *protos.Push) (*pro
 	return nil, constants.ErrSessionNotFound
 }
 
+// PushToUsers sends a push to users
+func (r *RemoteService) PushToUsers(ctx context.Context, push *protos.MultiPush) (*protos.Response, error) {
+	logger.Log.Debugf("sending push to user %v: %v", push.GetUids(), string(push.Data))
+	for _, uid := range push.GetUids() {
+		s := r.sessionPool.GetSessionByUID(uid)
+		if s != nil {
+			err := s.Push(push.Route, push.Data)
+			if err != nil {
+				logger.Log.Errorf("error while sending a push to user: %s", err.Error())
+			}
+		}
+	}
+
+	return &protos.Response{
+		Data: []byte("ack"),
+	}, nil
+}
+
 // KickUser sends a kick to user
 func (r *RemoteService) KickUser(ctx context.Context, kick *protos.KickMsg) (*protos.KickAnswer, error) {
 	logger.Log.Debugf("sending kick to user %s", kick.GetUserId())

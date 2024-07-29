@@ -120,6 +120,11 @@ func (ns *NatsRPCClient) SendPush(userID string, frontendSv *Server, push *proto
 	return ns.Send(topic, msg)
 }
 
+// PushToUsers pushes a message to a list of users
+func (ns *NatsRPCClient) PushToUsers(uids []string, frontendType string, push *protos.MultiPush) error {
+	return constants.ErrMethodUnimplemented
+}
+
 // SendKick kicks an user
 func (ns *NatsRPCClient) SendKick(userID string, serverType string, kick *protos.KickMsg) error {
 	topic := GetUserKickTopic(userID, serverType)

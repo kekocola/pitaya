@@ -235,6 +235,42 @@ func (gs *GRPCClient) SendPush(userID string, frontendSv *Server, push *protos.P
 	return constants.ErrNoConnectionToServer
 }
 
+// PushToUsers pushes a message to a list of users
+// TODO: Jaeger?
+func (gs *GRPCClient) PushToUsers(uids []string, frontendType string, push *protos.MultiPush) error {
+	if len(uids) == 0 {
+		return nil
+	}
+
+	if gs.bindingStorage == nil {
+		return constants.ErrNoBindingStorageModule
+	}
+
+	userSvrIdMap := gs.bindingStorage.GetUserFrontendIDMap(uids, frontendType)
+	if userSvrIdMap == nil {
+		return constants.ErrGetBindingInfoFail
+	}
+
+	mapSvrUsers := make(map[string][]string)
+	for uid, svrId := range userSvrIdMap {
+		mapSvrUsers[svrId] = append(mapSvrUsers[svrId], uid)
+	}
+
+	for svrId, pushUids := range mapSvrUsers {
+		if c, ok := gs.clientMap.Load(svrId); ok {
+			ctxT, done := context.WithTimeout(context.Background(), gs.reqTimeout)
+			defer done()
+			push.Uids = pushUids
+			err := c.(*grpcClient).pushToUsers(ctxT, push)
+			logger.Log.Warnf("[grpc client] failed to push msg to users:%v : %v", pushUids, err)
+		} else {
+			logger.Log.Warnf("[grpc client] not found svrId: %s to push msg to users:%v", svrId, pushUids)
+		}
+	}
+
+	return nil
+}
+
 // AddServer is called when a new server is discovered
 func (gs *GRPCClient) AddServer(sv *Server) {
 	var host, port, portKey string
@@ -348,6 +384,16 @@ func (gc *grpcClient) pushToUser(ctx context.Context, push *protos.Push) error {
 		}
 	}
 	_, err := gc.cli.PushToUser(ctx, push)
+	return err
+}
+
+func (gc *grpcClient) pushToUsers(ctx context.Context, push *protos.MultiPush) error {
+	if !gc.connected {
+		if err := gc.connect(); err != nil {
+			return err
+		}
+	}
+	_, err := gc.cli.PushToUsers(ctx, push)
 	return err
 }
 

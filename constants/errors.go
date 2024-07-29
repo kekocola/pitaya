@@ -53,6 +53,7 @@ var (
 	ErrNatsPushBufferSizeZero         = errors.New("pitaya.buffer.cluster.rpc.server.nats.push cant be zero")
 	ErrNilCondition                   = errors.New("pitaya/timer: nil condition")
 	ErrNoBindingStorageModule         = errors.New("for sending remote pushes or using unique session module while using grpc you need to pass it a BindingStorage")
+	ErrGetBindingInfoFail             = errors.New("get users binding info fail")
 	ErrNoConnectionToServer           = errors.New("rpc client has no connection to the chosen server")
 	ErrNoContextFound                 = errors.New("no context found")
 	ErrNoNatsConnectionString         = errors.New("you have to provide a nats url")
@@ -89,4 +90,5 @@ var (
 	ErrConnectionClosed               = errors.New("client connection closed")
 	ErrRouteUndefined                 = errors.New("route undefined")
 	ErrRouteCodeUndefined             = errors.New("route code undefined")
+	ErrMethodUnimplemented            = errors.New("method unimplemented")
 )

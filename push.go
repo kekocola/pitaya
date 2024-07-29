@@ -48,6 +48,7 @@ func (app *App) SendPushToUsers(route string, v interface{}, uids []string, fron
 	}
 
 	var notPushedUids []string
+	var multiPushUsers []string
 
 	logger.Log.Debugf("Type=PushToUsers Route=%s, Data=%+v, SvType=%s, #Users=%d", route, v, frontendType, len(uids))
 
@@ -58,18 +59,27 @@ func (app *App) SendPushToUsers(route string, v interface{}, uids []string, fron
 				logger.Log.Errorf("Session push message error, Route=%s, ID=%d, UID=%s, Error=%s",
 					route, s.ID(), s.UID(), err.Error())
 			}
-		} else if app.rpcClient != nil {
-			push := &protos.Push{
-				Route: route,
-				Uid:   uid,
-				Data:  data,
-			}
-			if err = app.rpcClient.SendPush(uid, &cluster.Server{Type: frontendType}, push); err != nil {
-				notPushedUids = append(notPushedUids, uid)
-				logger.Log.Errorf("RPCClient send message error, Route=%s, UID=%s, SvType=%s, Error=%s", route, uid, frontendType, err.Error())
-			}
 		} else {
-			notPushedUids = append(notPushedUids, uid)
+			id, err := strconv.ParseUint(uid, 10, 64)
+			if err != nil {
+				logger.Log.Errorf("Invalid UID, UID=%s", uid)
+				notPushedUids = append(notPushedUids, uid)
+				continue
+			}
+			// only Multi Push online users
+			if app.IsUserOnline(id) {
+				multiPushUsers = append(multiPushUsers, uid)
+			} else {
+				notPushedUids = append(notPushedUids, uid)
+			}
+		}
+	}
+
+	if len(multiPushUsers) > 0 {
+		err = app.rpcClient.PushToUsers(multiPushUsers, frontendType, &protos.MultiPush{Route: route, Data: data})
+		if err != nil {
+			notPushedUids = append(notPushedUids, multiPushUsers...)
+			logger.Log.Errorf("RPCClient send message error, Route=%s, UIDs=%v, SvType=%s, Error=%s", route, multiPushUsers, frontendType, err.Error())
 		}
 	}
 
