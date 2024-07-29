@@ -1,3 +1,4 @@
 [submodule "protos"]
 	path = pitaya-protos
 	url = https://github.com/kekocola/pitaya-protos
+	branch = master
