@@ -261,8 +261,9 @@ func (gs *GRPCClient) PushToUsers(uids []string, frontendType string, push *prot
 			ctxT, done := context.WithTimeout(context.Background(), gs.reqTimeout)
 			defer done()
 			push.Uids = pushUids
-			err := c.(*grpcClient).pushToUsers(ctxT, push)
-			logger.Log.Warnf("[grpc client] failed to push msg to users:%v : %v", pushUids, err)
+			if err := c.(*grpcClient).pushToUsers(ctxT, push); err != nil {
+				logger.Log.Warnf("[grpc client] failed to push msg to users:%v : %v", pushUids, err)
+			}
 		} else {
 			logger.Log.Warnf("[grpc client] not found svrId: %s to push msg to users:%v", svrId, pushUids)
 		}
