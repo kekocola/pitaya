@@ -26,7 +26,7 @@ import (
 	"github.com/topfreegames/pitaya/v2/cluster"
 	"github.com/topfreegames/pitaya/v2/conn/message"
 	"github.com/topfreegames/pitaya/v2/constants"
-	"github.com/topfreegames/pitaya/v2/logger"
+	"github.com/topfreegames/pitaya/v2/logger/log"
 	"github.com/topfreegames/pitaya/v2/protos"
 	"github.com/topfreegames/pitaya/v2/util"
 )
@@ -34,7 +34,7 @@ import (
 // SendPushToUsers sends a message to the given list of users
 func (app *App) SendPushToUsers(route string, v interface{}, uids []string, frontendType string) ([]string, error) {
 	if !message.IsRouteValid(route) {
-		logger.Log.Errorf("route:%s undefined", route)
+		log.Errorf("route:%s undefined", route)
 		return uids, constants.ErrRouteUndefined
 	}
 
@@ -50,19 +50,17 @@ func (app *App) SendPushToUsers(route string, v interface{}, uids []string, fron
 	var notPushedUids []string
 	var multiPushUsers []string
 
-	logger.Log.Debugf("Type=PushToUsers Route=%s, Data=%+v, SvType=%s, #Users=%d", route, v, frontendType, len(uids))
-
 	for _, uid := range uids {
 		if s := app.sessionPool.GetSessionByUID(uid); s != nil && app.server.Type == frontendType {
 			if err := s.Push(route, data); err != nil {
 				notPushedUids = append(notPushedUids, uid)
-				logger.Log.Errorf("Session push message error, Route=%s, ID=%d, UID=%s, Error=%s",
+				log.Errorf("Session push message error, Route=%s, ID=%d, UID=%s, Error=%s",
 					route, s.ID(), s.UID(), err.Error())
 			}
 		} else {
 			id, err := strconv.ParseUint(uid, 10, 64)
 			if err != nil {
-				logger.Log.Errorf("Invalid UID, UID=%s", uid)
+				log.Errorf("Invalid UID, UID=%s", uid)
 				notPushedUids = append(notPushedUids, uid)
 				continue
 			}
@@ -79,7 +77,7 @@ func (app *App) SendPushToUsers(route string, v interface{}, uids []string, fron
 		err = app.rpcClient.PushToUsers(multiPushUsers, frontendType, &protos.MultiPush{Route: route, Data: data})
 		if err != nil {
 			notPushedUids = append(notPushedUids, multiPushUsers...)
-			logger.Log.Errorf("RPCClient send message error, Route=%s, UIDs=%v, SvType=%s, Error=%s", route, multiPushUsers, frontendType, err.Error())
+			log.Errorf("RPCClient send message error, Route=%s, UIDs=%v, SvType=%s, Error=%s", route, multiPushUsers, frontendType, err.Error())
 		}
 	}
 
@@ -93,7 +91,7 @@ func (app *App) SendPushToUsers(route string, v interface{}, uids []string, fron
 // PushMsg pushes message to an user
 func (app *App) PushMsg(uid uint64, route string, v interface{}, frontendType string) error {
 	if !message.IsRouteValid(route) {
-		logger.Log.Errorf("route:%s undefined", route)
+		log.Errorf("route:%s undefined", route)
 		return constants.ErrRouteUndefined
 	}
 
@@ -110,7 +108,7 @@ func (app *App) PushMsg(uid uint64, route string, v interface{}, frontendType st
 	if app.server.Frontend && app.server.Type == frontendType {
 		if s := app.sessionPool.GetSessionByUID(strUid); s != nil {
 			if err := s.Push(route, data); err != nil {
-				logger.Log.Errorf("Session push message error, Route=%s, ID=%d, UID=%d, Error=%s",
+				log.Errorf("Session push message error, Route=%s, ID=%d, UID=%d, Error=%s",
 					route, s.ID(), uid, err.Error())
 				return err
 			} else {
@@ -125,7 +123,7 @@ func (app *App) PushMsg(uid uint64, route string, v interface{}, frontendType st
 		Data:  data,
 	}
 	if err = app.rpcClient.SendPush(strUid, &cluster.Server{Type: frontendType}, push); err != nil {
-		logger.Log.Errorf("RPCClient send message error, Route=%s, UID=%s, SvType=%s, Error=%s", route, uid, frontendType, err.Error())
+		log.Errorf("RPCClient send message error, Route=%s, UID=%s, SvType=%s, Error=%s", route, uid, frontendType, err.Error())
 		return err
 	}
 
