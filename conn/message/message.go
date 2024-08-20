@@ -146,6 +146,28 @@ func GetDictionary() map[string]uint16 {
 	return dict
 }
 
+// GetRouteCode gets the route code by route string
+func GetRouteCode(route string) (uint16, error) {
+	routesCodesMutex.RLock()
+	defer routesCodesMutex.RUnlock()
+	code, ok := routes[route]
+	if !ok {
+		return 0, ErrRouteInfoNotFound
+	}
+	return code, nil
+}
+
+// GetRouteByCode gets the route string by route code
+func GetRouteByCode(code uint16) (string, error) {
+	routesCodesMutex.RLock()
+	defer routesCodesMutex.RUnlock()
+	route, ok := codes[code]
+	if !ok {
+		return "", ErrRouteInfoNotFound
+	}
+	return route, nil
+}
+
 // IsRouteCodeValid check the route code is exists
 func IsRouteCodeValid(code uint16) bool {
 	_, ok := codes[code]

@@ -112,6 +112,11 @@ func (h *HandlerPool) ProcessHandlerMessage(
 		return nil, err
 	}
 
+	msgCode, err := message.GetRouteCode(rt.String())
+	if err != nil && msgCode > 0 {
+		session.AddMsgCount(msgCode)
+	}
+
 	return ret, nil
 }
 

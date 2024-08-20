@@ -98,7 +98,8 @@ type sessionImpl struct {
 	frontendSessionID   int64                                 // the id of the session on the frontend server
 	Subscriptions       []*nats.Subscription                  // subscription created on bind when using nats rpc server
 	requestsInFlight    ReqInFlight                           // whether the session is waiting from a response from a remote
-	pool                *sessionPoolImpl
+	pool                *sessionPoolImpl                      // session pool
+	msgCount            map[uint16]int64                      // message count per route
 }
 
 type ReqInFlight struct {
@@ -160,6 +161,8 @@ type Session interface {
 	GetHandshakeData() *HandshakeData
 	ValidateHandshake(data *HandshakeData) error
 	GetHandshakeValidators() map[string]func(data *HandshakeData) error
+	AddMsgCount(msgCode uint16)
+	GetMsgCount() map[uint16]int64
 }
 
 type sessionIDService struct {
@@ -191,6 +194,7 @@ func (pool *sessionPoolImpl) NewSession(entity networkentity.NetworkEntity, fron
 		IsFrontend:          frontend,
 		pool:                pool,
 		requestsInFlight:    ReqInFlight{m: make(map[string]string)},
+		msgCount:            make(map[uint16]int64),
 	}
 	if frontend {
 		pool.sessionsByID.Store(s.id, s)
@@ -878,4 +882,14 @@ func (s *sessionImpl) SetRequestInFlight(reqID string, reqData string, inFlight 
 		}
 	}
 	s.requestsInFlight.mu.Unlock()
+}
+
+// AddMsgCount adds a message count to the session
+func (s *sessionImpl) AddMsgCount(msgCode uint16) {
+	s.msgCount[msgCode] += 1
+}
+
+// GetMsgCount gets the message count of the session
+func (s *sessionImpl) GetMsgCount() map[uint16]int64 {
+	return s.msgCount
 }
