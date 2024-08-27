@@ -41,8 +41,7 @@ func createZapLogger(name string) *zap.SugaredLogger {
 	}
 
 	// 输出出log到控制台
-	encoderDev := zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig())
-	cores = append(cores, zapcore.NewCore(encoderDev, zapcore.AddSync(os.Stderr), zap.DebugLevel))
+	cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(os.Stderr), zap.DebugLevel))
 	core := zapcore.NewTee(cores...)
 
 	zapLogger = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.WarnLevel), zap.AddCallerSkip(1))
