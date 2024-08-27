@@ -34,6 +34,7 @@ import (
 	nats "github.com/nats-io/nats.go"
 	"github.com/topfreegames/pitaya/v2/constants"
 	"github.com/topfreegames/pitaya/v2/logger"
+	"github.com/topfreegames/pitaya/v2/logger/log"
 	"github.com/topfreegames/pitaya/v2/networkentity"
 	"github.com/topfreegames/pitaya/v2/protos"
 )
@@ -475,12 +476,12 @@ func (s *sessionImpl) IsBinded() bool {
 func (s *sessionImpl) Kick(ctx context.Context) error {
 	err := s.entity.Kick(ctx)
 	if err != nil {
-		logger.Log.Errorf("kick session fail, server will force close agent, uid:%s err:%v", s.UID(), err)
+		log.Errorf("kick session fail, server will force close agent, uid:%s err:%v", s.UID(), err)
 		// return err
 	}
 	err = s.entity.Close()
 	if err != nil {
-		logger.Log.Errorf("close agent fail, uid:%s err:%v", s.UID(), err)
+		log.Errorf("close agent fail, uid:%s err:%v", s.UID(), err)
 	}
 	return nil
 }
