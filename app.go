@@ -81,6 +81,7 @@ type Pitaya interface {
 	GetServers() []*cluster.Server
 	GetSessionFromCtx(ctx context.Context) session.Session
 	HasSessionInCtx(ctx context.Context) bool
+	GetSessionPool() session.SessionPool
 	Start()
 	SetDictionary(dict map[string]uint16) error
 	AddRoute(serverType string, routingFunction router.RoutingFunc) error
@@ -471,6 +472,11 @@ func (app *App) HasSessionInCtx(ctx context.Context) bool {
 		return false
 	}
 	return true
+}
+
+// GetSessionPool returns the session pool
+func (app *App) GetSessionPool() session.SessionPool {
+	return app.sessionPool
 }
 
 // GetDefaultLoggerFromCtx returns the default logger from the given context
