@@ -102,7 +102,7 @@ type sessionImpl struct {
 	pool                *sessionPoolImpl                      // session pool
 	msgCount            map[uint16]int64                      // message count per route
 	isClosed            bool                                  // whether the session is closed
-	mu                  sync.Mutex                            // protects isClosed
+	lockSess            sync.RWMutex                          // lock session
 }
 
 type ReqInFlight struct {
@@ -167,8 +167,8 @@ type Session interface {
 	AddMsgCount(msgCode uint16)
 	GetMsgCount() map[uint16]int64
 	IsClosed() bool
-	Lock()
-	Unlock()
+	LockSession()
+	UnlockSession()
 }
 
 type sessionIDService struct {
@@ -934,11 +934,11 @@ func (s *sessionImpl) IsClosed() bool {
 }
 
 // Lock locks the session
-func (s *sessionImpl) Lock() {
-	s.mu.Lock()
+func (s *sessionImpl) LockSession() {
+	s.lockSess.Lock()
 }
 
 // Unlock unlocks the session
-func (s *sessionImpl) Unlock() {
-	s.mu.Unlock()
+func (s *sessionImpl) UnlockSession() {
+	s.lockSess.Unlock()
 }
