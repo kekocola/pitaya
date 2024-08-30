@@ -101,6 +101,8 @@ type sessionImpl struct {
 	requestsInFlight    ReqInFlight                           // whether the session is waiting from a response from a remote
 	pool                *sessionPoolImpl                      // session pool
 	msgCount            map[uint16]int64                      // message count per route
+	isClosed            bool                                  // whether the session is closed
+	mu                  sync.Mutex                            // protects isClosed
 }
 
 type ReqInFlight struct {
@@ -164,6 +166,9 @@ type Session interface {
 	GetHandshakeValidators() map[string]func(data *HandshakeData) error
 	AddMsgCount(msgCode uint16)
 	GetMsgCount() map[uint16]int64
+	IsClosed() bool
+	Lock()
+	Unlock()
 }
 
 type sessionIDService struct {
@@ -196,6 +201,7 @@ func (pool *sessionPoolImpl) NewSession(entity networkentity.NetworkEntity, fron
 		pool:                pool,
 		requestsInFlight:    ReqInFlight{m: make(map[string]string)},
 		msgCount:            make(map[uint16]int64),
+		isClosed:            false,
 	}
 	if frontend {
 		pool.sessionsByID.Store(s.id, s)
@@ -476,13 +482,11 @@ func (s *sessionImpl) IsBinded() bool {
 func (s *sessionImpl) Kick(ctx context.Context) error {
 	err := s.entity.Kick(ctx)
 	if err != nil {
-		log.Errorf("kick session fail, server will force close agent, uid:%s err:%v", s.UID(), err)
+		log.Errorf("kick session fail, server will force close agent, uid:%s sid:%d err:%v", s.UID(), s.ID(), err)
 		// return err
 	}
-	err = s.entity.Close()
-	if err != nil {
-		log.Errorf("close agent fail, uid:%s err:%v", s.UID(), err)
-	}
+
+	s.Close()
 	return nil
 }
 
@@ -496,9 +500,33 @@ func (s *sessionImpl) OnClose(c func()) error {
 	return nil
 }
 
+func (s *sessionImpl) onClosed() {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Log.Errorf("session.onClosed: %v", err)
+		}
+	}()
+
+	for _, fn1 := range s.GetOnCloseCallbacks() {
+		fn1()
+	}
+
+	for _, fn2 := range s.pool.GetSessionCloseCallbacks() {
+		fn2(s)
+	}
+}
+
 // Close terminates current session, session related data will not be released,
 // all related data should be cleared explicitly in Session closed callback
 func (s *sessionImpl) Close() {
+	s.Lock()
+	defer s.Unlock()
+
+	if s.isClosed {
+		return
+	}
+	s.isClosed = true
+
 	atomic.AddInt64(&s.pool.SessionCount, -1)
 	s.pool.sessionsByID.Delete(s.ID())
 	// Only remove session by UID if the session ID matches the one being closed. This avoids problems with removing a valid session after the user has already reconnected before this session's heartbeat times out
@@ -513,13 +541,18 @@ func (s *sessionImpl) Close() {
 		for _, sub := range s.Subscriptions {
 			err := sub.Drain()
 			if err != nil {
-				logger.Log.Errorf("error unsubscribing to user's messages channel: %s, this can cause performance and leak issues", err.Error())
+				logger.Log.Errorf("error unsubscribing to user's messages channel: %v, this can cause performance and leak issues", err.Error())
 			} else {
 				logger.Log.Debugf("successfully unsubscribed to user's %s messages channel", s.UID())
 			}
 		}
 	}
-	s.entity.Close()
+	err := s.entity.Close()
+	if err != nil {
+		log.Errorf("close agent fail, uid:%s sid:%d err:%v", s.UID(), s.ID(), err)
+	}
+
+	s.onClosed()
 }
 
 // RemoteAddr returns the remote network address.
@@ -893,4 +926,19 @@ func (s *sessionImpl) AddMsgCount(msgCode uint16) {
 // GetMsgCount gets the message count of the session
 func (s *sessionImpl) GetMsgCount() map[uint16]int64 {
 	return s.msgCount
+}
+
+// IsClosed checks if the session is closed
+func (s *sessionImpl) IsClosed() bool {
+	return s.isClosed
+}
+
+// Lock locks the session
+func (s *sessionImpl) Lock() {
+	s.mu.Lock()
+}
+
+// Unlock unlocks the session
+func (s *sessionImpl) Unlock() {
+	s.mu.Unlock()
 }

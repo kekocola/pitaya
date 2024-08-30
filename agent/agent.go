@@ -37,6 +37,7 @@ import (
 	"github.com/topfreegames/pitaya/v2/constants"
 	"github.com/topfreegames/pitaya/v2/errors"
 	"github.com/topfreegames/pitaya/v2/logger"
+	"github.com/topfreegames/pitaya/v2/logger/log"
 	"github.com/topfreegames/pitaya/v2/metrics"
 	"github.com/topfreegames/pitaya/v2/protos"
 	"github.com/topfreegames/pitaya/v2/serialize"
@@ -358,7 +359,6 @@ func (a *agentImpl) Close() error {
 		close(a.chStopWrite)
 		close(a.chStopHeartbeat)
 		close(a.chDie)
-		a.onSessionClosed(a.Session)
 	}
 
 	metrics.ReportNumberOfConnectedClients(a.metricsReporters, a.sessionPool.GetSessionCount())
@@ -408,10 +408,10 @@ func (a *agentImpl) SetStatus(state int32) {
 
 // Handle handles the messages from and to a client
 func (a *agentImpl) Handle() {
-	defer func() {
-		a.Close()
-		logger.Log.Debugf("Session handle goroutine exit, SessionID=%d, UID=%s", a.Session.ID(), a.Session.UID())
-	}()
+	// defer func() {
+	// 	a.Close()
+	// 	logger.Log.Debugf("Session handle goroutine exit, SessionID=%d, UID=%s", a.Session.ID(), a.Session.UID())
+	// }()
 
 	go a.write()
 	go a.heartbeat()
@@ -440,7 +440,6 @@ func (a *agentImpl) heartbeat() {
 
 	defer func() {
 		ticker.Stop()
-		a.Close()
 	}()
 
 	for {
@@ -448,7 +447,8 @@ func (a *agentImpl) heartbeat() {
 		case <-ticker.C:
 			deadline := time.Now().Add(-2 * a.heartbeatTimeout).Unix()
 			if atomic.LoadInt64(&a.lastAt) < deadline {
-				logger.Log.Debugf("Session heartbeat timeout, LastTime=%d, Deadline=%d", atomic.LoadInt64(&a.lastAt), deadline)
+				logger.Log.Debugf("User: %s, session heartbeat timeout, LastTime=%d, Deadline=%d", a.GetSession().UID(), atomic.LoadInt64(&a.lastAt), deadline)
+				a.GetSession().Close()
 				return
 			}
 
@@ -468,22 +468,6 @@ func (a *agentImpl) heartbeat() {
 	}
 }
 
-func (a *agentImpl) onSessionClosed(s session.Session) {
-	defer func() {
-		if err := recover(); err != nil {
-			logger.Log.Errorf("pitaya/onSessionClosed: %v", err)
-		}
-	}()
-
-	for _, fn1 := range s.GetOnCloseCallbacks() {
-		fn1()
-	}
-
-	for _, fn2 := range a.sessionPool.GetSessionCloseCallbacks() {
-		fn2(s)
-	}
-}
-
 // SendHandshakeResponse sends a handshake response
 func (a *agentImpl) SendHandshakeResponse() error {
 	_, err := a.conn.Write(hrd)
@@ -498,11 +482,6 @@ func (a *agentImpl) SendHandshakeErrorResponse() error {
 }
 
 func (a *agentImpl) write() {
-	// clean func
-	defer func() {
-		a.Close()
-	}()
-
 	for {
 		select {
 		case pWrite := <-a.chSend:
@@ -510,7 +489,8 @@ func (a *agentImpl) write() {
 			if _, err := a.conn.Write(pWrite.data); err != nil {
 				tracing.FinishSpan(pWrite.ctx, err)
 				metrics.ReportTimingFromCtx(pWrite.ctx, a.metricsReporters, handlerType, err)
-				logger.Log.Errorf("Failed to write in conn: %s", err.Error())
+				log.Errorf("User:%s, failed to write in conn: %v", a.GetSession().UID(), err.Error())
+				a.GetSession().Close()
 				return
 			}
 			var e error
