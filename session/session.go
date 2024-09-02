@@ -519,8 +519,8 @@ func (s *sessionImpl) onClosed() {
 // Close terminates current session, session related data will not be released,
 // all related data should be cleared explicitly in Session closed callback
 func (s *sessionImpl) Close() {
-	s.Lock()
-	defer s.Unlock()
+	s.LockSession()
+	defer s.UnlockSession()
 
 	if s.isClosed {
 		return
