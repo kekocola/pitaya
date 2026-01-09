@@ -36,12 +36,20 @@ func createZapLogger(name string) *zap.SugaredLogger {
 
 	// 输出到日志文件
 	cores := []zapcore.Core{}
-	for level := zap.InfoLevel; level <= zapcore.FatalLevel; level++ {
-		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(CreateLogWriter(fmt.Sprintf("%s-%s", name, level.String()))), getLevelPriority(level)))
+
+	// 是否启用文件log
+	isK8sLog := os.Getenv("K8S_LOG") == "1"
+	if !isK8sLog {
+		for level := zap.InfoLevel; level <= zapcore.FatalLevel; level++ {
+			cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(CreateLogWriter(fmt.Sprintf("%s-%s", name, level.String()))), getLevelPriority(level)))
+		}
+		// 输出log到控制台
+		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), zap.DebugLevel))
+	} else {
+		// 输出log到控制台
+		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), zap.InfoLevel))
 	}
 
-	// 输出出log到控制台
-	cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(os.Stderr), zap.DebugLevel))
 	core := zapcore.NewTee(cores...)
 
 	zapLogger = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.WarnLevel), zap.AddCallerSkip(1))
