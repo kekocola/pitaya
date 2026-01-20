@@ -22,6 +22,7 @@ package acceptor
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -38,10 +39,11 @@ import (
 type WSAcceptor struct {
 	addr     string
 	connChan chan PlayerConn
-	listener net.Listener
 	certFile string
 	keyFile  string
 	running  bool
+	tlsCfg   *tls.Config
+	server   *http.Server
 }
 
 // NewWSAcceptor returns a new instance of WSAcceptor
@@ -75,10 +77,7 @@ func (w *WSAcceptor) GetConfiguredAddress() string {
 
 // GetAddr returns the addr the acceptor will listen on
 func (w *WSAcceptor) GetAddr() string {
-	if w.listener != nil {
-		return w.listener.Addr().String()
-	}
-	return ""
+	return w.addr
 }
 
 // GetConnChan gets a connection channel
@@ -129,11 +128,6 @@ func (w *WSAcceptor) ListenAndServe() {
 		},
 	}
 
-	listener, err := net.Listen("tcp", w.addr)
-	if err != nil {
-		logger.Log.Fatalf("Failed to listen: %s", err.Error())
-	}
-	w.listener = listener
 	w.running = true
 	w.serve(&upgrader)
 }
@@ -153,12 +147,7 @@ func (w *WSAcceptor) ListenAndServeTLS(cert, key string) {
 		logger.Log.Fatalf("Failed to load x509: %s", err.Error())
 	}
 
-	tlsCfg := &tls.Config{Certificates: []tls.Certificate{crt}}
-	listener, err := tls.Listen("tcp", w.addr, tlsCfg)
-	if err != nil {
-		logger.Log.Fatalf("Failed to listen: %s", err.Error())
-	}
-	w.listener = listener
+	w.tlsCfg = &tls.Config{Certificates: []tls.Certificate{crt}}
 	w.running = true
 	w.serve(&upgrader)
 }
@@ -166,17 +155,37 @@ func (w *WSAcceptor) ListenAndServeTLS(cert, key string) {
 func (w *WSAcceptor) serve(upgrader *websocket.Upgrader) {
 	defer w.Stop()
 
-	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
-	})
-
 	wsHandler := &connHandler{
 		upgrader: upgrader,
 		connChan: w.connChan,
 	}
-	http.HandleFunc("/", wsHandler.ServeWS)
 
-	if err := http.Serve(w.listener, nil); err != nil {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	})
+	mux.HandleFunc("/", wsHandler.ServeWS)
+	mux.HandleFunc("/time", func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
+		name, offset := now.Zone()
+		data := map[string]interface{}{
+			"current_time": now.Format("2006-01-02 15:04:05"), // 格式化时间
+			"timezone":     name,                              // 时区名称 (如 CST, UTC)
+			"zone_offset":  offset / 3600,                     // 距离 UTC 的小时偏移
+			"timestamp":    now.Unix(),                        // 秒级时间戳
+		}
+		json.NewEncoder(w).Encode(data)
+	})
+
+	w.server = &http.Server{
+		Addr:         w.addr,
+		Handler:      mux,
+		TLSConfig:    w.tlsCfg,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	if err := w.server.ListenAndServe(); err != nil {
 		logger.Log.Fatalf("Failed to serve http/ws port: %s", err.Error())
 	}
 }
@@ -184,9 +193,11 @@ func (w *WSAcceptor) serve(upgrader *websocket.Upgrader) {
 // Stop stops the acceptor
 func (w *WSAcceptor) Stop() {
 	w.running = false
-	err := w.listener.Close()
-	if err != nil {
-		logger.Log.Errorf("Failed to stop: %s", err.Error())
+	if w.server != nil {
+		err := w.server.Close()
+		if err != nil {
+			logger.Log.Errorf("Failed to stop: %s", err.Error())
+		}
 	}
 }
 
