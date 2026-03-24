@@ -27,46 +27,50 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	"github.com/topfreegames/pitaya/v2/config"
 	"github.com/topfreegames/pitaya/v2/constants"
 	"github.com/topfreegames/pitaya/v2/logger"
 	"github.com/topfreegames/pitaya/v2/util"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	logutil "go.etcd.io/etcd/client/pkg/v3/logutil"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/namespace"
 	"google.golang.org/grpc"
 )
 
 type etcdServiceDiscovery struct {
-	cli                    *clientv3.Client
-	syncServersInterval    time.Duration
-	heartbeatTTL           time.Duration
-	logHeartbeat           bool
-	lastHeartbeatTime      time.Time
-	leaseID                clientv3.LeaseID
-	mapByTypeLock          sync.RWMutex
-	serverMapByType        map[string]map[string]*Server
-	serverMapByID          sync.Map
-	etcdEndpoints          []string
-	etcdUser               string
-	etcdPass               string
-	etcdPrefix             string
-	etcdDialTimeout        time.Duration
-	running                bool
-	server                 *Server
-	stopChan               chan bool
-	stopLeaseChan          chan bool
-	lastSyncTime           time.Time
-	listeners              []SDListener
-	revokeTimeout          time.Duration
-	grantLeaseTimeout      time.Duration
-	grantLeaseMaxRetries   int
-	grantLeaseInterval     time.Duration
-	shutdownDelay          time.Duration
-	appDieChan             chan bool
-	serverTypesBlacklist   []string
-	syncServersParallelism int
-	syncServersRunning     chan bool
+	cli                          *clientv3.Client
+	syncServersInterval          time.Duration
+	heartbeatTTL                 time.Duration
+	logHeartbeat                 bool
+	lastHeartbeatTime            time.Time
+	leaseID                      clientv3.LeaseID
+	mapByTypeLock                sync.RWMutex
+	serverMapByType              map[string]map[string]*Server
+	serverMapByID                sync.Map
+	etcdEndpoints                []string
+	etcdUser                     string
+	etcdPass                     string
+	etcdPrefix                   string
+	etcdDialTimeout              time.Duration
+	running                      bool
+	server                       *Server
+	stopChan                     chan bool
+	stopLeaseChan                chan bool
+	lastSyncTime                 time.Time
+	listeners                    []SDListener
+	revokeTimeout                time.Duration
+	grantLeaseTimeout            time.Duration
+	grantLeaseMaxRetries         int
+	grantLeaseInterval           time.Duration
+	shutdownDelay                time.Duration
+	revokeMu                     sync.Mutex
+	leaseRevokeDone              bool
+	skipShutdownDelayAfterSignal bool
+	appDieChan                   chan bool
+	serverTypesBlacklist         []string
+	syncServersParallelism       int
+	syncServersRunning           chan bool
 }
 
 // NewEtcdServiceDiscovery ctor
@@ -81,14 +85,14 @@ func NewEtcdServiceDiscovery(
 		client = cli[0]
 	}
 	sd := &etcdServiceDiscovery{
-		running:         false,
-		server:          server,
-		serverMapByType: make(map[string]map[string]*Server),
-		listeners:       make([]SDListener, 0),
-		stopChan:        make(chan bool),
-		stopLeaseChan:   make(chan bool),
-		appDieChan:      appDieChan,
-		cli:             client,
+		running:            false,
+		server:             server,
+		serverMapByType:    make(map[string]map[string]*Server),
+		listeners:          make([]SDListener, 0),
+		stopChan:           make(chan bool),
+		stopLeaseChan:      make(chan bool),
+		appDieChan:         appDieChan,
+		cli:                client,
 		syncServersRunning: make(chan bool),
 	}
 
@@ -300,7 +304,7 @@ func (sd *etcdServiceDiscovery) GetServersByType(serverType string) (map[string]
 		// Create a new map to avoid concurrent read and write access to the
 		// map, this also prevents accidental changes to the list of servers
 		// kept by the service discovery.
-		ret := make(map[string]*Server,len(sd.serverMapByType[serverType]))
+		ret := make(map[string]*Server, len(sd.serverMapByType[serverType]))
 		for k, v := range sd.serverMapByType[serverType] {
 			ret[k] = v
 		}
@@ -595,10 +599,29 @@ func (sd *etcdServiceDiscovery) SyncServers(firstSync bool) error {
 	return nil
 }
 
+// OnAppShutdownSignal revokes the etcd lease (removing this server's registration),
+// then waits 2 seconds so peers can observe the removal before the rest of shutdown runs.
+func (sd *etcdServiceDiscovery) OnAppShutdownSignal() {
+	if err := sd.revokeLeaseOnce(); err != nil {
+		logger.Log.Warnf("sd: error revoking etcd lease on shutdown signal: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+	sd.revokeMu.Lock()
+	sd.skipShutdownDelayAfterSignal = true
+	sd.revokeMu.Unlock()
+}
+
 // BeforeShutdown executes before shutting down and will remove the server from the list
 func (sd *etcdServiceDiscovery) BeforeShutdown() {
-	sd.revoke()
-	time.Sleep(sd.shutdownDelay) // Sleep for a short while to ensure shutdown has propagated
+	if err := sd.revokeLeaseOnce(); err != nil {
+		logger.Log.Warnf("sd: error revoking etcd lease before shutdown: %v", err)
+	}
+	sd.revokeMu.Lock()
+	skipDelay := sd.skipShutdownDelayAfterSignal
+	sd.revokeMu.Unlock()
+	if !skipDelay {
+		time.Sleep(sd.shutdownDelay)
+	}
 }
 
 // Shutdown executes on shutdown and will clean etcd
@@ -608,23 +631,41 @@ func (sd *etcdServiceDiscovery) Shutdown() error {
 	return nil
 }
 
-// revoke prevents Pitaya from crashing when etcd is not available
-func (sd *etcdServiceDiscovery) revoke() error {
+// revokeLeaseOnce revokes the etcd lease once (deletes keys bound to the lease).
+// Further calls are no-ops so OnAppShutdownSignal and BeforeShutdown can both run safely.
+func (sd *etcdServiceDiscovery) revokeLeaseOnce() error {
+	sd.revokeMu.Lock()
+	if sd.leaseRevokeDone {
+		sd.revokeMu.Unlock()
+		return nil
+	}
+	sd.leaseRevokeDone = true
+	sd.revokeMu.Unlock()
+
 	close(sd.stopLeaseChan)
 	c := make(chan error, 1)
 	go func() {
 		defer close(c)
 		logger.Log.Debug("waiting for etcd revoke")
+		if sd.cli == nil {
+			c <- nil
+			logger.Log.Debug("finished waiting for etcd revoke (no client)")
+			return
+		}
 		_, err := sd.cli.Revoke(context.TODO(), sd.leaseID)
 		c <- err
-		logger.Log.Debug("finished waiting for etcd revoke")
+		if err != nil {
+			logger.Log.Warnf("error revoking etcd lease: %v", err)
+		} else {
+			logger.Log.Infof("etcd lease %x revoked", sd.leaseID)
+		}
 	}()
 	select {
 	case err := <-c:
-		return err // completed normally
+		return err
 	case <-time.After(sd.revokeTimeout):
 		logger.Log.Warn("timed out waiting for etcd revoke")
-		return nil // timed out
+		return nil
 	}
 }
 

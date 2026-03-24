@@ -31,3 +31,10 @@ type ServiceDiscovery interface {
 	AddListener(listener SDListener)
 	interfaces.Module
 }
+
+// AppShutdownSignalHook is implemented by service discovery backends that should
+// remove the local server from the registry at the very beginning of app shutdown
+// (before sessions and other modules are torn down).
+type AppShutdownSignalHook interface {
+	OnAppShutdownSignal()
+}

@@ -363,6 +363,13 @@ func (app *App) Start() {
 		close(app.dieChan)
 	}
 
+	if app.serverMode == Cluster && app.serviceDiscovery != nil {
+		if hook, ok := app.serviceDiscovery.(cluster.AppShutdownSignalHook); ok {
+			logger.Log.Info("unregistering local server from service discovery before shutdown")
+			hook.OnAppShutdownSignal()
+		}
+	}
+
 	logger.Log.Warn("server is stopping...")
 
 	app.sessionPool.CloseAll()
